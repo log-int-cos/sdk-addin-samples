@@ -19,7 +19,7 @@
   }
 
   function colorDe(c) {
-    return c ? 'rgb(' + c.r + ',' + c.g + ',' + c.b + ')' : '#3388ff';
+    return c ? 'rgb(' + c.r + ',' + c.g + ',' + c.b + ')' : '#ff0000';
   }
 
   function dibujarZonas(api, intento) {
@@ -31,17 +31,36 @@
     api.call('Get', { typeName: 'Zone', resultsLimit: 10000 }, function (zonas) {
       console.log('[zonas] zonas recibidas: ' + (zonas ? zonas.length : 0));
       if (capaZonas) mapa.removeLayer(capaZonas);
-      capaZonas = L.layerGroup();
+      capaZonas = L.featureGroup();
+
+      // Dibujar con canvas (evita conflictos con los estilos SVG de MyGeotab)
+      var renderer = L.canvas ? L.canvas({ padding: 0.5 }) : undefined;
+
       (zonas || []).forEach(function (z) {
-        if (!z.points || z.points.length < 3) return;
+        var n = z.points ? z.points.length : 0;
+        var p0 = n ? z.points[0] : null;
+        console.log('[zonas] "' + z.name + '" - puntos: ' + n +
+          (p0 ? ' - primer punto: ' + p0.y + ', ' + p0.x : ''));
+        if (n < 3) return;
+
         var puntos = z.points.map(function (p) { return [p.y, p.x]; });
         var color = colorDe(z.fillColor);
-        var poligono = L.polygon(puntos, { color: color, weight: 2, fillOpacity: 0.15 });
+        var opciones = { color: color, weight: 3, opacity: 1, fillColor: color, fillOpacity: 0.3 };
+        if (renderer) opciones.renderer = renderer;
+
+        var poligono = L.polygon(puntos, opciones);
         if (poligono.bindTooltip) poligono.bindTooltip(z.name || '');
         else poligono.bindPopup(z.name || '');
         poligono.addTo(capaZonas);
       });
+
       capaZonas.addTo(mapa);
+      if (capaZonas.getLayers().length) {
+        var b = capaZonas.getBounds();
+        console.log('[zonas] las zonas ocupan de ' + b.getSouth().toFixed(4) + ', ' + b.getWest().toFixed(4) +
+          ' a ' + b.getNorth().toFixed(4) + ', ' + b.getEast().toFixed(4));
+        console.log('[zonas] ¿visibles en el mapa ahora? ' + mapa.getBounds().intersects(b));
+      }
     }, function (e) {
       console.error('[zonas] error al cargar las zonas', e);
     });
@@ -62,7 +81,6 @@
     };
   }
 
-  // Se engancha en el momento exacto en que el add-in se registra
   if (window.geotab && geotab.addin) {
     var actual;
     Object.defineProperty(geotab.addin, 'heatmap', {
@@ -75,4 +93,3 @@
     console.warn('[zonas] objeto geotab.addin no disponible');
   }
 })();
-

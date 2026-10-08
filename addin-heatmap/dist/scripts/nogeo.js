@@ -5,7 +5,35 @@
     navigator.geolocation.getCurrentPosition = function (ok) { ok(centro); };
   }
 
-  // ---------- 2. Geocercas (zonas) de MyGeotab ----------
+  // ---------- 2. Fondo satélite + selector de mapa ----------
+  var capaSatelite = null;
+  var capaCallejero = null;
+
+  if (window.L && L.tileLayer) {
+    var tileLayerOriginal = L.tileLayer;
+    L.tileLayer = function (url, opciones) {
+      // Cuando el add-in pide el mapa de OpenStreetMap, ponemos el satélite en su lugar
+      if (url && url.indexOf('openstreetmap') !== -1) {
+        var imagen = tileLayerOriginal(
+          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+          { maxZoom: 19, attribution: 'Imágenes &copy; Esri' }
+        );
+        var etiquetas = tileLayerOriginal(
+          'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+          { maxZoom: 19 }
+        );
+        capaSatelite = L.layerGroup([imagen, etiquetas]);
+        capaCallejero = tileLayerOriginal(
+          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          { maxZoom: 19, attribution: '&copy; OpenStreetMap' }
+        );
+        return capaSatelite;
+      }
+      return tileLayerOriginal(url, opciones);
+    };
+  }
+
+  // ---------- 3. Geocercas (zonas) de MyGeotab ----------
   var mapa = null;
   var capaZonas = null;
 
@@ -13,9 +41,17 @@
     L.Map.addInitHook(function () {
       mapa = this;
       console.log('[zonas] mapa detectado');
+      // Selector Satélite / Mapa (cuando el add-in ya ha puesto el fondo)
+      setTimeout(function () {
+        if (capaSatelite && capaCallejero && L.control && L.control.layers) {
+          L.control.layers(
+            { 'Satélite': capaSatelite, 'Mapa': capaCallejero },
+            null,
+            { position: 'topright', collapsed: false }
+          ).addTo(mapa);
+        }
+      }, 0);
     });
-  } else {
-    console.warn('[zonas] Leaflet no está cargado todavía');
   }
 
   function colorDe(c) {
@@ -32,22 +68,14 @@
       console.log('[zonas] zonas recibidas: ' + (zonas ? zonas.length : 0));
       if (capaZonas) mapa.removeLayer(capaZonas);
       capaZonas = L.featureGroup();
-
-      // Dibujar con canvas (evita conflictos con los estilos SVG de MyGeotab)
       var renderer = L.canvas ? L.canvas({ padding: 0.5 }) : undefined;
 
       (zonas || []).forEach(function (z) {
-        var n = z.points ? z.points.length : 0;
-        var p0 = n ? z.points[0] : null;
-        console.log('[zonas] "' + z.name + '" - puntos: ' + n +
-          (p0 ? ' - primer punto: ' + p0.y + ', ' + p0.x : ''));
-        if (n < 3) return;
-
+        if (!z.points || z.points.length < 3) return;
         var puntos = z.points.map(function (p) { return [p.y, p.x]; });
         var color = colorDe(z.fillColor);
         var opciones = { color: color, weight: 3, opacity: 1, fillColor: color, fillOpacity: 0.3 };
         if (renderer) opciones.renderer = renderer;
-
         var poligono = L.polygon(puntos, opciones);
         if (poligono.bindTooltip) poligono.bindTooltip(z.name || '');
         else poligono.bindPopup(z.name || '');
@@ -55,12 +83,6 @@
       });
 
       capaZonas.addTo(mapa);
-      if (capaZonas.getLayers().length) {
-        var b = capaZonas.getBounds();
-        console.log('[zonas] las zonas ocupan de ' + b.getSouth().toFixed(4) + ', ' + b.getWest().toFixed(4) +
-          ' a ' + b.getNorth().toFixed(4) + ', ' + b.getEast().toFixed(4));
-        console.log('[zonas] ¿visibles en el mapa ahora? ' + mapa.getBounds().intersects(b));
-      }
     }, function (e) {
       console.error('[zonas] error al cargar las zonas', e);
     });
@@ -73,7 +95,6 @@
       var focusOriginal = addin.focus;
       addin.focus = function (api) {
         var r = focusOriginal.apply(this, arguments);
-        console.log('[zonas] focus llamado, cargando zonas...');
         dibujarZonas(api);
         return r;
       };
@@ -89,7 +110,5 @@
       get: function () { return actual; },
       set: function (f) { actual = envolver(f); console.log('[zonas] add-in enganchado'); }
     });
-  } else {
-    console.warn('[zonas] objeto geotab.addin no disponible');
   }
 })();

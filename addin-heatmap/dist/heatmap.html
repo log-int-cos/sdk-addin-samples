@@ -25,8 +25,16 @@
           <p>Visualiza dónde se concentra la actividad de nuestros vehículos, o dónde se producen las excepciones de las reglas, sobre el mapa con las geocercas de Cosentino.</p>
 
           <label for="visualizeBy">Visualizar por:</label>
-          <input type="radio" id="visualizeByLocationHistory" name="visualizeBy" value="locationHistory" checked="checked"> Historial de ubicaciones
-          <input type="radio" id="visualizeByExceptionHistory" name="visualizeBy" value="exceptionHistory"> Historial de excepciones
+          <div style="margin:6px 0 12px 0;">
+            <label for="visualizeByLocationHistory" style="display:flex !important; align-items:center; gap:8px; margin:0 0 8px 0 !important; font-weight:normal; cursor:pointer;">
+              <input type="radio" id="visualizeByLocationHistory" name="visualizeBy" value="locationHistory" checked="checked" style="width:auto !important; margin:0 !important; display:inline-block !important; flex:0 0 auto;">
+              <span>Historial de ubicaciones</span>
+            </label>
+            <label for="visualizeByExceptionHistory" style="display:flex !important; align-items:center; gap:8px; margin:0 !important; font-weight:normal; cursor:pointer;">
+              <input type="radio" id="visualizeByExceptionHistory" name="visualizeBy" value="exceptionHistory" style="width:auto !important; margin:0 !important; display:inline-block !important; flex:0 0 auto;">
+              <span>Historial de excepciones</span>
+            </label>
+          </div>
 
           <label for="exceptionTypes">Regla:</label>
           <select id="exceptionTypes" class="checkmateFormEditField" ng-mousedown="selectType($event)" disabled="disabled">

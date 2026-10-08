@@ -5,7 +5,7 @@
   <meta http-equiv="x-ua-compatible" content="ie=edge">
   <meta name="description" content="">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Heat Map</title>
+  <title>Mapa de calor - Cosentino</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Geotab/sdk-addin-samples@master/addin-heatmap/dist/styles/vendor.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Geotab/sdk-addin-samples@master/addin-heatmap/dist/styles/main.css">
   <script src="https://cdn.jsdelivr.net/gh/Geotab/sdk-addin-samples@master/addin-heatmap/dist/scripts/vendor.js"></script>
@@ -15,35 +15,35 @@
 <body>
   <div id="heatmap" style="height: calc(100%)">
     <div id="disclaimer">
-      <label id="disclaimerLabel">Sample add-in/tool</label>
-      <p>This tool is provided as an example and is available on an As-Is basis. You must assume all the risks and costs associated with the use of the sample tool, including, without limitation, any damage to any equipment, software, information or data. In addition, we are not obligated to provide any maintenance, technical or other support for the sample tool. In order to improve our products, we may at any time, and without warning, change the design, presentation, or functionality of the software.</p>
+      <label id="disclaimerLabel">Herramienta interna Cosentino</label>
+      <p>Herramienta de uso interno de Cosentino para analizar la actividad de la flota en nuestras instalaciones, canteras y zonas de operación. Los datos proceden de MyGeotab y se muestran tal como se registran en la plataforma. Para cualquier incidencia o propuesta de mejora, contacta con el equipo de Logística Interna.</p>
     </div>
     <div class="cssGrid sm-part-12">
       <div class="lg-part-2 md-part-3 sm-part-12">
         <div id="controls">
-          <h2>Heatmap</h2>
-          <p>This example demonstrates how to create an add-in to visualize location or exception (rule violation) history using a heat map.</p>
+          <h2>Mapa de calor</h2>
+          <p>Visualiza dónde se concentra la actividad de nuestros vehículos, o dónde se producen las excepciones de las reglas, sobre el mapa con las geocercas de Cosentino.</p>
 
-          <label for="visualizeBy">Visualize by:</label>
-          <input type="radio" id="visualizeByLocationHistory" name="visualizeBy" value="locationHistory" checked="checked"> Location History
-          <input type="radio" id="visualizeByExceptionHistory" name="visualizeBy" value="exceptionHistory"> Exception History
+          <label for="visualizeBy">Visualizar por:</label>
+          <input type="radio" id="visualizeByLocationHistory" name="visualizeBy" value="locationHistory" checked="checked"> Historial de ubicaciones
+          <input type="radio" id="visualizeByExceptionHistory" name="visualizeBy" value="exceptionHistory"> Historial de excepciones
 
-          <label for="exceptionTypes">Rule:</label>
+          <label for="exceptionTypes">Regla:</label>
           <select id="exceptionTypes" class="checkmateFormEditField" ng-mousedown="selectType($event)" disabled="disabled">
-            <option disabled="disabled">Select a rule</option>
+            <option disabled="disabled">Selecciona una regla</option>
           </select>
 
-          <label for="vehicles">Vehicle(s):</label>
+          <label for="vehicles">Vehículo(s):</label>
           <select id="vehicles" class="checkmateFormEditField" multiple="true" ng-mousedown="selectType($event)"></select>
 
-          <label for="from">From:</label>
+          <label for="from">Desde:</label>
           <input id="from" type="datetime-local" class="checkmateFormEditField">
 
-          <label for="to">To:</label>
+          <label for="to">Hasta:</label>
           <input id="to" type="datetime-local" class="checkmateFormEditField">
 
           <div style="margin:1em"></div>
-          <input type="submit" value="Show Heat Map" id="showHeatMap">
+          <input type="submit" value="Mostrar mapa de calor" id="showHeatMap">
           <div id="error"></div>
           <div id="message"></div>
 
@@ -54,16 +54,17 @@
           </div>
 
           <div>
-            <h3>Instructions</h3>
+            <h3>Instrucciones</h3>
             <ol>
-              <li>Choose to visualize by <i>location history</i> or <i>exception history</i>.</li>
-              <li>If visualizing by exception history, select a rule for which to search for exceptions.</li>
-              <li>Select the vehicle(s) to search on.</li>
-              <li>Specify a date/time range.</li>
-              <li>Click the <i>Show Heat Map</i> button to update the map.</li>
-              <li>After applying any changes to the MyGeotab Groups Filter, refresh the page to apply the filter to the list of vehicles and repeat the above steps.</li>
+              <li>Elige si quieres visualizar por <i>historial de ubicaciones</i> o por <i>historial de excepciones</i>.</li>
+              <li>Si visualizas por excepciones, selecciona la regla que quieres analizar.</li>
+              <li>Selecciona el vehículo o los vehículos.</li>
+              <li>Indica el rango de fechas y horas.</li>
+              <li>Pulsa <i>Mostrar mapa de calor</i> para actualizar el mapa.</li>
+              <li>Si cambias el filtro de grupos de MyGeotab, recarga la página para actualizar la lista de vehículos y repite los pasos anteriores.</li>
             </ol>
-            <p>When selecting veicles, use CTRL+Click to select/deselect individual vehicles or SHIFT+Click to select a range of vehicles. To select all vehicles in the list, first select one and then use CTRL+A.</p>
+            <p>Para seleccionar vehículos usa CTRL+clic para marcar o desmarcar uno a uno, o MAYÚS+clic para seleccionar un rango. Para seleccionarlos todos, marca uno y pulsa CTRL+A.</p>
+            <p>Usa los botones <i>Satélite</i> y <i>Mapa</i> de la esquina superior derecha para cambiar el fondo. Pasa el ratón por encima de una geocerca para ver su nombre.</p>
           </div>
         </div>
       </div>

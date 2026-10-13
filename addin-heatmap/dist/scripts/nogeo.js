@@ -281,7 +281,17 @@
     return cacheTeselas[src];
   }
 
-  async function capturarMapa(titulo) {
+  function aJpeg(lienzo) {
+    return new Promise(function (ok, ko) {
+      try {
+        lienzo.toBlob(function (b) {
+          if (b) ok(b); else ko(new Error('el navegador no pudo crear la imagen'));
+        }, 'image/jpeg', 0.9);
+      } catch (e) { ko(e); }
+    });
+  }
+
+  async function capturarMapa(titulo, sinFondo) {
     var cont = mapa.getContainer();
     var r0 = cont.getBoundingClientRect();
     var W = Math.round(r0.width), H = Math.round(r0.height), cab = 36;
@@ -300,7 +310,7 @@
 
     // Fondo (teselas)
     var imgs = cont.querySelectorAll('.leaflet-tile-pane img.leaflet-tile');
-    for (var i = 0; i < imgs.length; i++) {
+    for (var i = 0; i < imgs.length && !sinFondo; i++) {
       var img = imgs[i];
       if (getComputedStyle(img).opacity === '0' || getComputedStyle(img.parentNode).opacity === '0') continue;
       var r = img.getBoundingClientRect();
@@ -348,7 +358,7 @@
     ctx.textBaseline = 'middle';
     ctx.fillText(titulo, 10, cab / 2);
 
-    return new Promise(function (ok) { lienzo.toBlob(ok, 'image/jpeg', 0.9); });
+    return aJpeg(lienzo);
   }
 
   function nombreArchivo(t) {
@@ -385,7 +395,13 @@
     b.disabled = true;
     fondoFallido = false;
     var archivos = [];
+    var errores = 0;
     var resumen = ['Mapas de calor — ' + modo, 'Periodo: ' + desde + ' → ' + hasta, ''];
+
+    // Los avisos (alert) del add-in original bloquearían el proceso: se recogen en el resumen
+    var alertOriginal = window.alert;
+    var ultimoAviso = '';
+    window.alert = function (m) { ultimoAviso = String(m); console.warn('[zip] aviso del add-in:', m); };
 
     // Trabajos: primero todo el grupo junto (si hay más de uno) y luego cada vehículo
     var trabajos = [];
@@ -398,19 +414,43 @@
       trabajos.push({ nombre: o.text, archivo: n + '_' + o.text, valores: [o.value] });
     });
 
-    for (var t = 0; t < trabajos.length; t++) {
-      var tr = trabajos[t];
-      estado.textContent = 'Generando ' + (t + 1) + ' de ' + trabajos.length + ': ' + tr.nombre + '…';
-      seleccionarSolo(sel, tr.valores);
-      var res = await ejecutarMapa();
-      if (/no data/i.test(res.mensaje) || res.error) {
-        resumen.push(tr.nombre + ': sin datos' + (res.error ? ' (' + res.error + ')' : ''));
-        continue;
+    try {
+      for (var t = 0; t < trabajos.length; t++) {
+        var tr = trabajos[t];
+        estado.textContent = 'Generando ' + (t + 1) + ' de ' + trabajos.length + ': ' + tr.nombre + '…';
+        // Un fallo en un vehículo no cancela el resto: se anota y se sigue
+        try {
+          ultimoAviso = '';
+          seleccionarSolo(sel, tr.valores);
+          var res = await ejecutarMapa();
+          if (ultimoAviso) {
+            errores++;
+            resumen.push(tr.nombre + ': ERROR de Geotab — ' + ultimoAviso);
+            continue;
+          }
+          if (/no data/i.test(res.mensaje) || res.error) {
+            resumen.push(tr.nombre + ': sin datos' + (res.error ? ' (' + res.error + ')' : ''));
+            continue;
+          }
+          var titulo = tr.nombre + '  ·  ' + desde + ' → ' + hasta + '  ·  ' + modo;
+          var jpg;
+          try {
+            jpg = await capturarMapa(titulo, false);
+          } catch (e1) {
+            console.warn('[zip] captura con fondo fallida, se repite sin fondo', e1);
+            fondoFallido = true;
+            jpg = await capturarMapa(titulo, true);
+          }
+          archivos.push({ nombre: nombreArchivo(tr.archivo) + '.jpg', datos: new Uint8Array(await jpg.arrayBuffer()) });
+          resumen.push(tr.nombre + ': OK — ' + res.mensaje.trim());
+        } catch (e) {
+          errores++;
+          console.error('[zip] error en ' + tr.nombre, e);
+          resumen.push(tr.nombre + ': ERROR — ' + (e && e.message ? e.message : e));
+        }
       }
-      var titulo = tr.nombre + '  ·  ' + desde + ' → ' + hasta + '  ·  ' + modo;
-      var jpg = await capturarMapa(titulo);
-      archivos.push({ nombre: nombreArchivo(tr.archivo) + '.jpg', datos: new Uint8Array(await jpg.arrayBuffer()) });
-      resumen.push(tr.nombre + ': OK — ' + res.mensaje.trim());
+    } finally {
+      window.alert = alertOriginal;
     }
 
     if (fondoFallido) {
@@ -432,7 +472,9 @@
     setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 5000);
 
     var conImagen = archivos.length - 1;
-    estado.textContent = 'Listo: ' + conImagen + ' imagen(es) en ' + nombreZip + (fondoFallido ? ' (sin fondo de mapa)' : '');
+    estado.textContent = 'Listo: ' + conImagen + ' imagen(es) en ' + nombreZip +
+      (errores ? ' — ' + errores + ' con error (ver resumen.txt)' : '') +
+      (fondoFallido ? ' (alguna sin fondo de mapa)' : '');
     b.disabled = false;
   }
 

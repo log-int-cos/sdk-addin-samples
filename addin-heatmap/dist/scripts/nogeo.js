@@ -7,7 +7,7 @@
   //  4. Descarga en ZIP de un JPEG del mapa de calor por vehículo
   // =====================================================================
 
- // ---------- 1. Centro inicial del mapa (epicentro del polígono Cantoria, entre el AC1 y AC2) ----------
+  // ---------- 1. Centro inicial del mapa ----------
   var centro = { coords: { latitude: 37.370146047645555, longitude: -2.2435926777017703 } };
   if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition = function (ok) { ok(centro); };
@@ -219,5 +219,279 @@
 
   function crearBotonDescarga() {
     var mostrar = document.getElementById('showHeatMap');
-    if (!mostrar || document.getElementById('desc
+    if (!mostrar || document.getElementById('descargarZip')) return;
+
+    var b = document.createElement('input');
+    b.type = 'button';
+    b.id = 'descargarZip';
+    b.value = 'Descargar imágenes (ZIP)';
+    b.style.cssText = 'display:block;margin-top:8px;cursor:pointer;';
+    var estado = document.createElement('div');
+    estado.id = 'estadoZip';
+    estado.style.cssText = 'margin-top:6px;font-size:12px;color:#444;';
+
+    mostrar.parentNode.insertBefore(estado, mostrar.nextSibling);
+    mostrar.parentNode.insertBefore(b, mostrar.nextSibling);
+    b.addEventListener('click', function () {
+      descargarZip().catch(function (e) {
+        console.error('[zip] error', e);
+        estado.textContent = 'Error al generar el ZIP: ' + (e && e.message ? e.message : e);
+        b.disabled = false;
+      });
+    });
+    console.log('[zip] botón de descarga añadido');
+  }
+
+  // Pulsa "Mostrar mapa de calor" y espera a que termine
+  async function ejecutarMapa() {
+    var btn = document.getElementById('showHeatMap');
+    var msg = document.getElementById('message');
+    var err = document.getElementById('error');
+    btn.click();
+    var t0 = Date.now();
+    while (!btn.disabled && Date.now() - t0 < 1500) await esperar(100);   // espera a que empiece
+    t0 = Date.now();
+    while (btn.disabled && Date.now() - t0 < 180000) await esperar(250);  // espera a que acabe
+    await esperarTeselas();
+    await esperar(600);                                                   // repintado del mapa de calor
+    return { mensaje: (msg && msg.textContent) || '', error: (err && err.textContent) || '' };
+  }
+
+  async function esperarTeselas() {
+    var t0 = Date.now();
+    while (Date.now() - t0 < 10000) {
+      var imgs = mapa.getContainer().querySelectorAll('img.leaflet-tile');
+      var pendientes = 0;
+      for (var i = 0; i < imgs.length; i++) if (!imgs[i].complete) pendientes++;
+      if (pendientes === 0) return;
+      await esperar(200);
+    }
+  }
+
+  // Las teselas se vuelven a pedir por CORS para poder copiarlas en la imagen
+  var cacheTeselas = {};
+  var fondoFallido = false;
+  function cargarTesela(src) {
+    if (!cacheTeselas[src]) {
+      cacheTeselas[src] = fetch(src, { mode: 'cors' })
+        .then(function (r) { return r.ok ? r.blob() : null; })
+        .then(function (blob) { return blob ? createImageBitmap(blob) : null; })
+        .catch(function () { return null; });
+    }
+    return cacheTeselas[src];
+  }
+
+  async function capturarMapa(titulo) {
+    var cont = mapa.getContainer();
+    var r0 = cont.getBoundingClientRect();
+    var W = Math.round(r0.width), H = Math.round(r0.height), cab = 36;
+    var s = Math.min(window.devicePixelRatio || 1, 2);
+    var lienzo = document.createElement('canvas');
+    lienzo.width = Math.round(W * s);
+    lienzo.height = Math.round((H + cab) * s);
+    var ctx = lienzo.getContext('2d');
+    ctx.scale(s, s);
+    ctx.fillStyle = '#d9d9d9';
+    ctx.fillRect(0, 0, W, H + cab);
+
+    ctx.save();
+    ctx.translate(0, cab);
+    ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
+
+    // Fondo (teselas)
+    var imgs = cont.querySelectorAll('.leaflet-tile-pane img.leaflet-tile');
+    for (var i = 0; i < imgs.length; i++) {
+      var img = imgs[i];
+      if (getComputedStyle(img).opacity === '0' || getComputedStyle(img.parentNode).opacity === '0') continue;
+      var r = img.getBoundingClientRect();
+      if (r.right < r0.left || r.left > r0.right || r.bottom < r0.top || r.top > r0.bottom) continue;
+      var bmp = await cargarTesela(img.src);
+      if (bmp) ctx.drawImage(bmp, r.left - r0.left, r.top - r0.top, r.width, r.height);
+      else fondoFallido = true;
+    }
+
+    // Mapa de calor y geocercas (lienzos de Leaflet)
+    var lienzos = cont.querySelectorAll('canvas');
+    for (var k = 0; k < lienzos.length; k++) {
+      var cv = lienzos[k];
+      var rc = cv.getBoundingClientRect();
+      if (!rc.width || !rc.height) continue;
+      ctx.globalAlpha = parseFloat(getComputedStyle(cv).opacity) || 1;
+      try { ctx.drawImage(cv, rc.left - r0.left, rc.top - r0.top, rc.width, rc.height); } catch (e) { /* lienzo no copiable */ }
+      ctx.globalAlpha = 1;
+    }
+
+    // Nombres de las geocercas
+    if (mostrarNombres) {
+      ctx.font = 'bold 12px Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.lineJoin = 'round';
+      etiquetas.forEach(function (e) {
+        var p = mapa.latLngToContainerPoint(e.latlng);
+        if (p.x < -50 || p.y < -20 || p.x > W + 50 || p.y > H + 20) return;
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+        ctx.strokeText(e.nombre, p.x, p.y);
+        ctx.fillStyle = '#fff';
+        ctx.fillText(e.nombre, p.x, p.y);
+      });
+    }
+    ctx.restore();
+
+    // Cabecera con el título
+    ctx.fillStyle = '#1f2a37';
+    ctx.fillRect(0, 0, W, cab);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 14px Arial, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(titulo, 10, cab / 2);
+
+    return new Promise(function (ok) { lienzo.toBlob(ok, 'image/jpeg', 0.9); });
+  }
+
+  function nombreArchivo(t) {
+    return String(t).replace(/[\\\/:*?"<>|]+/g, '_').replace(/\s+/g, '_').substring(0, 80);
+  }
+
+  function seleccionarSolo(sel, valores) {
+    for (var i = 0; i < sel.options.length; i++) sel.options[i].selected = valores.indexOf(sel.options[i].value) !== -1;
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  async function descargarZip() {
+    var b = document.getElementById('descargarZip');
+    var estado = document.getElementById('estadoZip');
+    var sel = document.getElementById('vehicles');
+    if (!mapa || !sel) throw new Error('el mapa todavía no está listo');
+
+    var opciones = Array.prototype.filter.call(sel.options, function (o) { return o.value && !o.disabled; });
+    var marcadas = opciones.filter(function (o) { return o.selected; });
+    var lista = marcadas.length ? marcadas : opciones;
+    if (!lista.length) throw new Error('no hay vehículos en la lista');
+
+    var seleccionOriginal = marcadas.map(function (o) { return o.value; });
+    var desde = (document.getElementById('from').value || '').replace('T', ' ');
+    var hasta = (document.getElementById('to').value || '').replace('T', ' ');
+    var porExcepciones = document.getElementById('visualizeByExceptionHistory').checked;
+    var regla = '';
+    if (porExcepciones) {
+      var ex = document.getElementById('exceptionTypes');
+      regla = ex && ex.selectedIndex >= 0 ? ex.options[ex.selectedIndex].text : '';
+    }
+    var modo = porExcepciones ? 'Excepciones: ' + regla : 'Ubicaciones';
+
+    b.disabled = true;
+    fondoFallido = false;
+    var archivos = [];
+    var resumen = ['Mapas de calor — ' + modo, 'Periodo: ' + desde + ' → ' + hasta, ''];
+
+    // Trabajos: primero todo el grupo junto (si hay más de uno) y luego cada vehículo
+    var trabajos = [];
+    if (lista.length > 1) {
+      trabajos.push({ nombre: 'Todos (' + lista.length + ' vehículos)', archivo: '00_Todos', valores: lista.map(function (o) { return o.value; }) });
+    }
+    lista.forEach(function (o, i) {
+      var n = String(i + 1);
+      while (n.length < 2) n = '0' + n;
+      trabajos.push({ nombre: o.text, archivo: n + '_' + o.text, valores: [o.value] });
+    });
+
+    for (var t = 0; t < trabajos.length; t++) {
+      var tr = trabajos[t];
+      estado.textContent = 'Generando ' + (t + 1) + ' de ' + trabajos.length + ': ' + tr.nombre + '…';
+      seleccionarSolo(sel, tr.valores);
+      var res = await ejecutarMapa();
+      if (/no data/i.test(res.mensaje) || res.error) {
+        resumen.push(tr.nombre + ': sin datos' + (res.error ? ' (' + res.error + ')' : ''));
+        continue;
+      }
+      var titulo = tr.nombre + '  ·  ' + desde + ' → ' + hasta + '  ·  ' + modo;
+      var jpg = await capturarMapa(titulo);
+      archivos.push({ nombre: nombreArchivo(tr.archivo) + '.jpg', datos: new Uint8Array(await jpg.arrayBuffer()) });
+      resumen.push(tr.nombre + ': OK — ' + res.mensaje.trim());
+    }
+
+    if (fondoFallido) {
+      resumen.push('', 'Aviso: la red no permitió copiar el fondo del mapa; las imágenes incluyen el mapa de calor, las geocercas y los nombres sobre fondo gris.');
+    }
+    archivos.push({ nombre: 'resumen.txt', datos: new TextEncoder().encode(resumen.join('\r\n')) });
+
+    // Restaurar la selección y la vista del usuario
+    seleccionarSolo(sel, seleccionOriginal);
+
+    var zip = crearZip(archivos);
+    var nombreZip = 'MapasCalor_' + nombreArchivo(desde) + '_a_' + nombreArchivo(hasta) + '.zip';
+    var url = URL.createObjectURL(zip);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = nombreZip;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 5000);
+
+    var conImagen = archivos.length - 1;
+    estado.textContent = 'Listo: ' + conImagen + ' imagen(es) en ' + nombreZip + (fondoFallido ? ' (sin fondo de mapa)' : '');
+    b.disabled = false;
+  }
+
+  // ZIP sin compresión (los JPEG ya van comprimidos); no necesita librerías externas
+  var tablaCrc = null;
+  function crc32(datos) {
+    if (!tablaCrc) {
+      tablaCrc = new Uint32Array(256);
+      for (var n = 0; n < 256; n++) {
+        var c = n;
+        for (var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+        tablaCrc[n] = c >>> 0;
+      }
+    }
+    var crc = 0xFFFFFFFF;
+    for (var i = 0; i < datos.length; i++) crc = tablaCrc[(crc ^ datos[i]) & 0xFF] ^ (crc >>> 8);
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  function crearZip(archivos) {
+    var ahora = new Date();
+    var hora = (ahora.getHours() << 11) | (ahora.getMinutes() << 5) | (ahora.getSeconds() >> 1);
+    var fecha = ((ahora.getFullYear() - 1980) << 9) | ((ahora.getMonth() + 1) << 5) | ahora.getDate();
+    var enc = new TextEncoder();
+    var partes = [], central = [], desplazamiento = 0, tamCentral = 0;
+
+    archivos.forEach(function (f) {
+      var nombre = enc.encode(f.nombre), d = f.datos, crc = crc32(d);
+
+      var lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
+      lh.setUint16(8, 0, true); lh.setUint16(10, hora, true); lh.setUint16(12, fecha, true);
+      lh.setUint32(14, crc, true); lh.setUint32(18, d.length, true); lh.setUint32(22, d.length, true);
+      lh.setUint16(26, nombre.length, true); lh.setUint16(28, 0, true);
+      partes.push(lh, nombre, d);
+
+      var ch = new DataView(new ArrayBuffer(46));
+      ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true);
+      ch.setUint16(8, 0x0800, true); ch.setUint16(10, 0, true); ch.setUint16(12, hora, true);
+      ch.setUint16(14, fecha, true); ch.setUint32(16, crc, true); ch.setUint32(20, d.length, true);
+      ch.setUint32(24, d.length, true); ch.setUint16(28, nombre.length, true); ch.setUint16(30, 0, true);
+      ch.setUint16(32, 0, true); ch.setUint16(34, 0, true); ch.setUint16(36, 0, true);
+      ch.setUint32(38, 0, true); ch.setUint32(42, desplazamiento, true);
+      central.push(ch, nombre);
+
+      desplazamiento += 30 + nombre.length + d.length;
+      tamCentral += 46 + nombre.length;
+    });
+
+    var fin = new DataView(new ArrayBuffer(22));
+    fin.setUint32(0, 0x06054b50, true); fin.setUint16(4, 0, true); fin.setUint16(6, 0, true);
+    fin.setUint16(8, archivos.length, true); fin.setUint16(10, archivos.length, true);
+    fin.setUint32(12, tamCentral, true); fin.setUint32(16, desplazamiento, true); fin.setUint16(20, 0, true);
+
+    return new Blob(partes.concat(central, [fin]), { type: 'application/zip' });
+  }
+
+  // Solo para pruebas fuera del navegador
+  if (typeof module !== 'undefined' && module.exports) module.exports = { crearZip: crearZip, crc32: crc32 };
+})();
+
  
